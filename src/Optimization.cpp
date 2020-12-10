@@ -30,119 +30,6 @@ typedef enum
 } GetLineStatus_;
 
 
-COptimization_ :: COptimization_ ()
-{
-	m_pOrigVariables = NULL;
-	m_pOrigParameters = NULL;
-	m_pOrigConstraints = NULL;
-	m_pOrigObjective = NULL;
-	m_Style = Opt_Minimize;
-	m_pOrigInequalities = NULL;
-	m_pOrigEqualities = NULL;
-	m_pNonRedundantEqns = NULL;
-	m_pReducedVariables = NULL;
-	m_pReducedInequalities = NULL;
-	m_pReducedObjective = NULL;
-	m_pElimVarToEquality = NULL;
-}  /* COptimization_ :: COptimization_ () */
-
-
-COptimization_::~COptimization_ ()
-{
-	if (m_pVertices)
-	{
-		for (int nVertex = 0; nVertex < m_VertexCount; nVertex++)
-			delete [] m_pVertices [nVertex];
-		delete [] m_pVertices;
-		m_pVertices = NULL;
-	}
-
-	if (m_pElimVarToEquality)
-	{
-		delete [] m_pElimVarToEquality;
-		m_pElimVarToEquality = NULL;
-	}
-
-	if (m_pObjectiveExcessTerm)
-	{
-		delete m_pObjectiveExcessTerm;
-		m_pObjectiveExcessTerm = NULL;
-	}
-
-	if (m_pReducedObjective)
-	{
-		delete m_pReducedObjective;
-		m_pReducedObjective = NULL;
-	}
-
-	if (m_pBValues)
-	{
-		delete m_pBValues;
-		m_pBValues = NULL;
-	}
-
-	if (m_pNoVariables)
-	{
-		delete m_pNoVariables;
-		m_pNoVariables = NULL;
-	}
-
-	if (m_pReducedInequalities)
-	{
-		delete m_pReducedInequalities;
-		m_pReducedInequalities = NULL;
-	}
-
-	if (m_pReducedVariables)
-	{
-		delete m_pReducedVariables;
-		m_pReducedVariables = NULL;
-	}
-
-	if (m_pNonRedundantEqns)
-	{
-		delete m_pNonRedundantEqns;
-		m_pNonRedundantEqns = NULL;
-	}
-
- 	if (m_pOrigEqualities)
-	{
-		delete m_pOrigEqualities;
-		m_pOrigEqualities = NULL;
-	}
-
-	if (m_pOrigInequalities)
-	{
-		delete m_pOrigInequalities;
-		m_pOrigInequalities = NULL;
-	}
-
-	if (m_pOrigObjective)
-	{
-		delete m_pOrigObjective;
-		m_pOrigObjective = NULL;
-	}
-
-	if (m_pOrigConstraints)
-	{
-		delete m_pOrigConstraints;
-		m_pOrigConstraints = NULL;
-	}
-
-	if (m_pOrigParameters)
-	{
-		delete m_pOrigParameters;
-		m_pOrigParameters = NULL;
-	}
-
-	if (m_pOrigVariables)
-	{
-		delete m_pOrigVariables;
-		m_pOrigVariables = NULL;
-	}
-}  /* COptimization_::~COptimization_ () */
-
-
 GetLineStatus_ GetLine 
 	(
 		FILE *		p_pFile, 
@@ -372,7 +259,7 @@ BOOL COptimization_ :: ParseFile (FILE * p_pFile)
 	 * Parse all the lines obtained from the different sections,
 	 * allocating the necessary space.
 	 */
-	m_pOrigVariables = new CSymbolSet_ ((WORD) VarStrList. Length ());
+	m_pOrigVariables.reset(new CSymbolSet_ ((WORD) VarStrList. Length ()));
 	nSymbol = 0;
 	while ((szString = (char *) VarStrList. Dequeue ()))
 	{
@@ -389,7 +276,7 @@ BOOL COptimization_ :: ParseFile (FILE * p_pFile)
 		delete [] szString;
 	}
 
- 	m_pOrigParameters = new CSymbolSet_ ((WORD) ParamStrList. Length ());
+ 	m_pOrigParameters.reset(new CSymbolSet_ ((WORD) ParamStrList. Length ()));
 	nSymbol = 0;
 	while ((szString = (char *) ParamStrList. Dequeue ()))
 	{
@@ -406,8 +293,9 @@ BOOL COptimization_ :: ParseFile (FILE * p_pFile)
 		delete [] szString;
 	}
 
-	m_pOrigConstraints = new CEquationSet_ (m_pOrigVariables, m_pOrigParameters,
-										(WORD) ConstStrList. Length ());
+	m_pOrigConstraints.reset(new CEquationSet_ (
+	        m_pOrigVariables.get(), m_pOrigParameters.get(),
+            (WORD) ConstStrList. Length ()));
 	nConst = 0;
 	while ((szString = (char *) ConstStrList. Dequeue ()))
 	{
@@ -425,7 +313,8 @@ BOOL COptimization_ :: ParseFile (FILE * p_pFile)
 
 	if (szObjective)
 	{
-		m_pOrigObjective = new CEquation_ (m_pOrigVariables, m_pOrigParameters);
+		m_pOrigObjective.reset(new CEquation_ (m_pOrigVariables.get(), 
+                                               m_pOrigParameters.get()));
 		if (! m_pOrigObjective-> Parse (szObjective))
 		{
 			Rprintf ("ERROR: Unable to successfully parse objective function.\n");
@@ -641,10 +530,10 @@ void COptimization_ :: CategorizeConstraints ()
 	/*
 	 * Allocate space for the partitioned constraints.
 	 */
-	m_pOrigEqualities = new CEquationSet_ (m_pOrigVariables, 
-			m_pOrigParameters, EqualityCount);
-	m_pOrigInequalities = new CEquationSet_ (m_pOrigVariables, 
-			m_pOrigParameters, InequalityCount);
+	m_pOrigEqualities.reset(new CEquationSet_ (m_pOrigVariables.get(), 
+			m_pOrigParameters.get(), EqualityCount));
+	m_pOrigInequalities.reset(new CEquationSet_ (m_pOrigVariables.get(), 
+			m_pOrigParameters.get(), InequalityCount));
 
 	/*
 	 * Copy the constraints into their respective equation category.
@@ -762,7 +651,7 @@ LBL_Diagonalized:
 	 * Set up the relationship between variables to be eliminated
 	 * and the equality used to substitute out those variables.
 	 */
-	m_pElimVarToEquality = new WORD [VarCnt];
+	m_pElimVarToEquality.reset(new WORD [VarCnt]);
 	for (nVar = 0; nVar < VarCnt; nVar++)
 		m_pElimVarToEquality [nVar] = VAR_NOT_ELIMINATED;
 
@@ -786,7 +675,7 @@ LBL_Diagonalized:
 	 * Build a new symbol set for all variables that were not
 	 * eliminated.
 	 ****************************************************************/
-	m_pReducedVariables = new CSymbolSet_ (VarCnt - Rank);
+	m_pReducedVariables.reset(new CSymbolSet_ (VarCnt - Rank));
 
 	nRemainingVar = 0;
 	for (nVar = 0; nVar < VarCnt; nVar++)
@@ -808,13 +697,14 @@ LBL_Diagonalized:
 	 * constraint).
 	 ****************************************************************/
 
-	m_pReducedInequalities = new CEquationSet_ (m_pReducedVariables,
-			m_pOrigParameters, m_pOrigInequalities-> m_Count + Rank);
+	m_pReducedInequalities.reset(new CEquationSet_ (
+	        m_pReducedVariables.get(), m_pOrigParameters.get(), 
+	        m_pOrigInequalities-> m_Count + Rank));
 
 	/*
 	 * Copy the old inequalities, substituting out the eliminated variables.
 	 */
-	pWorkEqn = new CEquation_ (m_pOrigVariables, m_pOrigParameters);
+	pWorkEqn = new CEquation_ (m_pOrigVariables.get(), m_pOrigParameters.get());
 	nInequality = 0;
 	for (nEqn = 0; nEqn < m_pOrigInequalities-> m_Count; nEqn++)
 	{
@@ -868,13 +758,13 @@ LBL_Diagonalized:
 		}
 	}
 
-	m_pReducedObjective = new CEquation_ (m_pReducedVariables,
-			m_pOrigParameters);
+	m_pReducedObjective.reset(new CEquation_ (m_pReducedVariables.get(),
+			m_pOrigParameters.get()));
 
 	/*
 	 * Generate the reduced form of the objective function.
 	 */
-	pWorkEqn-> Copy (m_pOrigObjective);
+	pWorkEqn-> Copy (m_pOrigObjective.get());
 	for (nVar = 0; nVar < VarCnt; nVar++)
 	{
 		if (m_pElimVarToEquality [nVar] != VAR_NOT_ELIMINATED)
@@ -947,9 +837,9 @@ std::string COptimization_ :: EnumerateVertices ()
 	 * Create the value set corresponding to the right hand side of the greater than
 	 * or equal to relations in the reduced inequalities.
 	 */
-	m_pNoVariables = new CSymbolSet_ (0);
-	m_pBValues = new CEquationSet_ (m_pNoVariables,
-			m_pOrigParameters, m_pReducedInequalities-> m_Count);
+	m_pNoVariables.reset(new CSymbolSet_ (0));
+	m_pBValues.reset(new CEquationSet_ (m_pNoVariables.get(),
+			m_pOrigParameters.get(), m_pReducedInequalities-> m_Count));
 	for (nInequality = 0; nInequality < m_pReducedInequalities-> m_Count; nInequality++)
 	{
 		if (m_pReducedInequalities-> m_pEquations [nInequality]. m_RelationToZero ==
@@ -983,8 +873,8 @@ std::string COptimization_ :: EnumerateVertices ()
 	 * Create the value corresponding to the nonvariable terms in the 
 	 * objective function.
 	 */
-	m_pObjectiveExcessTerm = new CEquation_ (m_pNoVariables,
-			m_pOrigParameters);
+	m_pObjectiveExcessTerm.reset(new CEquation_ (m_pNoVariables.get(),
+			m_pOrigParameters.get()));
 	for (nParam = 0; nParam < m_pOrigParameters-> Count (); nParam++)
 	{
 		m_pObjectiveExcessTerm-> m_pParamCoefs [nParam] =
@@ -1063,11 +953,12 @@ std::string COptimization_ :: EnumerateVertices ()
 	result.append(pTableau -> VertexEnumerate ());
 
 	m_VertexCount = pTableau-> VertexCount ();
-	m_pVertices = new Pdouble_ [m_VertexCount];
+	m_pVertices.reset(new std::unique_ptr<double[]>[m_VertexCount]);
 	for (nVertex = 0; nVertex < m_VertexCount; nVertex++)
-	{
-		m_pVertices [nVertex] = new double [Columns];
-		bResult = pTableau-> GetVertex (nVertex, m_pVertices [nVertex], Columns);
+	{ 
+		m_pVertices [nVertex].reset(new double [Columns]);
+		bResult = pTableau-> GetVertex (nVertex, m_pVertices [nVertex].get(), 
+                                  Columns);
 	}
 
 	delete pTableau;
@@ -1100,10 +991,10 @@ std::string COptimization_::OutputOptimum ()
 	else
 		result.append ("\nMAX {\n");
 
-	pValue = new CEquation_ (m_pNoVariables, m_pOrigParameters);
+	pValue = new CEquation_ (m_pNoVariables.get(), m_pOrigParameters.get());
 	for (nVertex = 0; nVertex < m_VertexCount; nVertex++)
 	{
-		pValue-> Copy (m_pObjectiveExcessTerm);
+		pValue-> Copy (m_pObjectiveExcessTerm.get());
 		for (nBValue = 0; nBValue < m_pBValues-> m_Count; nBValue++)
 		{
 			pValue-> FactorAdd (& m_pBValues-> m_pEquations [nBValue],
