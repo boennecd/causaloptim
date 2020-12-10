@@ -100,6 +100,7 @@ typedef enum
 	PS_Objective
 } ParseState_;
 
+
 BOOL COptimization_ :: ParseFile (FILE * p_pFile)
 {
 	char		szParseLine [MAX_PARSE_LINE + 1];
@@ -114,19 +115,19 @@ BOOL COptimization_ :: ParseFile (FILE * p_pFile)
 					// Indicates the previous section of the file that was
 					// just finished parsing.
 
-	char *			szString;
+	std::unique_ptr<char[]> szString;
 					// String reference for adding to string lists.
 
-	CLinkedList_	VarStrList;
+	CLinkedList_<std::unique_ptr<char[]> > VarStrList;
 					// List of variable name strings to be parsed.
 
-	CLinkedList_	ParamStrList;
+	CLinkedList_<std::unique_ptr<char[]> >	ParamStrList;
 					// List of parameter name strings to be parsed.
 
-	CLinkedList_	ConstStrList;
+	CLinkedList_<std::unique_ptr<char[]> >	ConstStrList;
 					// List of constraint strings to be parsed.
 
-	char *			szObjective = NULL;
+    std::unique_ptr<char[]> szObjective;
 					// Objective function string.
 
 	Symbol_			Symbol;
@@ -221,32 +222,26 @@ BOOL COptimization_ :: ParseFile (FILE * p_pFile)
 		switch (ParseState)
 		{
 		  case PS_Variables:
-		  	szString = new char [strlen (szParseLine)+1];
-			strcpy (szString, szParseLine);
-			VarStrList. Append (szString);
+		  	szString.reset(new char [strlen (szParseLine)+1]);
+			strcpy (szString.get(), szParseLine);
+			VarStrList. Append (std::move(szString));
 			break;
 
 		  case PS_Parameters:
-		  	szString = new char [strlen (szParseLine)+1];
-			strcpy (szString, szParseLine);
-			ParamStrList. Append (szString);
+		  	szString.reset(new char [strlen (szParseLine)+1]);
+			strcpy (szString.get(), szParseLine);
+			ParamStrList. Append (std::move(szString));
 			break;
 
 		  case PS_Constraints:
-		  	szString = new char [strlen (szParseLine)+1];
-			strcpy (szString, szParseLine);
-			ConstStrList. Append (szString);
+		  	szString.reset(new char [strlen (szParseLine)+1]);
+			strcpy (szString.get(), szParseLine);
+			ConstStrList. Append (std::move(szString));
 			break;
 
 		  case PS_Objective:
-		  	if (szObjective)
-			{
-				delete [] szObjective;
-				szObjective = NULL;
-			}
-
-			szObjective = new char [strlen (szParseLine)+1];
-			strcpy (szObjective, szParseLine);
+			szObjective.reset(new char [strlen (szParseLine)+1]);
+			strcpy (szObjective.get(), szParseLine);
 			break;
 
 		  default:
@@ -259,93 +254,76 @@ BOOL COptimization_ :: ParseFile (FILE * p_pFile)
 	 * Parse all the lines obtained from the different sections,
 	 * allocating the necessary space.
 	 */
+	auto reset_uni_ptr = 
+	    [&](std::unique_ptr<char[]> &ptr, std::unique_ptr<char[]> val) 
+	        -> char * {
+	    ptr.reset(val.release());
+	    return ptr.get();
+	};
+	
 	m_pOrigVariables.reset(new CSymbolSet_ ((WORD) VarStrList. Length ()));
 	nSymbol = 0;
-	while ((szString = (char *) VarStrList. Dequeue ()))
+	while (reset_uni_ptr(szString, VarStrList. Dequeue ()))
 	{
-		if (! ParseSymbol (szString, Symbol))
+		if (! ParseSymbol (szString.get(), Symbol))
 		{
 			Rprintf ("ERROR: Unable to successfully parse variable name.\n");
-			Rprintf ("\t%s\n", szString);
-			bStatus = FALSE;
-			goto ClearParseData;
+			Rprintf ("\t%s\n", szString.get());
+			return FALSE;
 		}
 
 		m_pOrigVariables-> Assign (nSymbol, Symbol);  
 		nSymbol++;
-		delete [] szString;
 	}
 
  	m_pOrigParameters.reset(new CSymbolSet_ ((WORD) ParamStrList. Length ()));
 	nSymbol = 0;
-	while ((szString = (char *) ParamStrList. Dequeue ()))
+	while (reset_uni_ptr(szString, ParamStrList. Dequeue ()))
 	{
-		if (! ParseSymbol (szString, Symbol))
+		if (! ParseSymbol (szString.get(), Symbol))
 		{
 			Rprintf ("ERROR: Unable to successfully parse parameter name.\n");
-			Rprintf ("\t%s\n", szString);
-			bStatus = FALSE;
-			goto ClearParseData;
+			Rprintf ("\t%s\n", szString.get());
+			return FALSE;
 		}
 
 		m_pOrigParameters-> Assign (nSymbol, Symbol);  
 		nSymbol++;
-		delete [] szString;
 	}
 
 	m_pOrigConstraints.reset(new CEquationSet_ (
 	        m_pOrigVariables.get(), m_pOrigParameters.get(),
             (WORD) ConstStrList. Length ()));
 	nConst = 0;
-	while ((szString = (char *) ConstStrList. Dequeue ()))
+	while (reset_uni_ptr(szString, ConstStrList. Dequeue ()))
 	{
-		if (! m_pOrigConstraints-> m_pEquations [nConst]. Parse (szString))
+		if (! m_pOrigConstraints-> m_pEquations [nConst]. Parse (szString.get()))
 		{
 			Rprintf ("ERROR: Unable to successfully parse constraint.\n");
-			Rprintf ("\t%s\n", szString);
-			bStatus = FALSE;
-			goto ClearParseData;
+			Rprintf ("\t%s\n", szString.get());
+			return FALSE;
 		}
 
 		nConst++;
-		delete [] szString;
 	}
 
 	if (szObjective)
 	{
 		m_pOrigObjective.reset(new CEquation_ (m_pOrigVariables.get(), 
                                                m_pOrigParameters.get()));
-		if (! m_pOrigObjective-> Parse (szObjective))
+		if (! m_pOrigObjective-> Parse (szObjective.get()))
 		{
 			Rprintf ("ERROR: Unable to successfully parse objective function.\n");
-			Rprintf ("\t%s\n", szObjective);
-			bStatus = FALSE;
-			goto ClearParseData;
+			Rprintf ("\t%s\n", szObjective.get());
+			return FALSE;
 		}
 	}
 	else
 	{
 		Rprintf ("ERROR: No Objective function was supplied.\n");
-		bStatus = FALSE;
-		goto ClearParseData;
+		return FALSE;
 	}
-
-
-
-
-ClearParseData:
-
- 	while ((szString = (char *) VarStrList. Dequeue ()))
-		delete [] szString;
-
-	while ((szString = (char *) ParamStrList. Dequeue ()))
-		delete [] szString;
-
-	while ((szString = (char *) ConstStrList. Dequeue ()))
-		delete [] szString;
-
-	if (szObjective)
-		delete [] szObjective;
+	
 	
 	return bStatus;
 }  /* COptimization_ :: ParseFile () */
